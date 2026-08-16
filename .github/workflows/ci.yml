@@ -35,4 +35,4 @@ jobs:
           ./scripts/run_all.sh --help
 
       - name: Run hardware-independent tests
-        run: python -m pytest -q tests --ignore=tests/fm/test_forward.py
+        run: python -m pytest -q tests

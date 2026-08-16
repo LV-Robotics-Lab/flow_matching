@@ -58,7 +58,7 @@ def test_mock_forward_backward() -> None:
     out = policy.compute_loss(batch)
     assert torch.isfinite(out["loss"])
     out["loss"].backward()
-    print("mock forward/backward OK, loss=", float(out["loss"]))
+    print("mock forward/backward OK, loss=", float(out["loss"].detach()))
 
 
 def test_predict_action_shape() -> None:
@@ -115,7 +115,7 @@ def test_backbone_feat_forward_backward() -> None:
     out = policy.compute_loss(batch)
     assert torch.isfinite(out["loss"])
     out["loss"].backward()
-    print("backbone_feat forward/backward OK, loss=", float(out["loss"]))
+    print("backbone_feat forward/backward OK, loss=", float(out["loss"].detach()))
 
 
 if __name__ == "__main__":
