@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import os
-import sys
+from pathlib import Path
 
 import torch
 import yaml
 
-_POLICY_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _POLICY_ROOT not in sys.path:
-    sys.path.insert(0, _POLICY_ROOT)
+_FLOW_MATCHING_ROOT = Path(__file__).resolve().parents[2]
 
-from models.fm import build_flow_policy
-from utils.train_utils import sync_fm_action_horizon_from_data
+from lv_flow_matching.models.fm import build_flow_policy
+from lv_flow_matching.utils.train_utils import sync_fm_action_horizon_from_data
 
 
 def _mock_batch(
@@ -37,7 +34,11 @@ def _mock_batch(
 
 
 def test_mock_forward_backward() -> None:
-    cfg = yaml.safe_load(open(os.path.join(_POLICY_ROOT, "configs", "train", "config.yaml")))
+    cfg = yaml.safe_load(
+        (_FLOW_MATCHING_ROOT / "configs" / "train" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     fm = sync_fm_action_horizon_from_data(cfg["models"]["fm"], cfg["data"])
     fm["image_pretrained"] = False
     window = int(cfg["data"]["window_size"])
@@ -61,7 +62,11 @@ def test_mock_forward_backward() -> None:
 
 
 def test_predict_action_shape() -> None:
-    cfg = yaml.safe_load(open(os.path.join(_POLICY_ROOT, "configs", "train", "config.yaml")))
+    cfg = yaml.safe_load(
+        (_FLOW_MATCHING_ROOT / "configs" / "train" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     fm = sync_fm_action_horizon_from_data(cfg["models"]["fm"], cfg["data"])
     fm["image_pretrained"] = False
     window = int(cfg["data"]["window_size"])
@@ -86,7 +91,11 @@ def test_predict_action_shape() -> None:
 
 
 def test_backbone_feat_forward_backward() -> None:
-    cfg = yaml.safe_load(open(os.path.join(_POLICY_ROOT, "configs", "train", "config.yaml")))
+    cfg = yaml.safe_load(
+        (_FLOW_MATCHING_ROOT / "configs" / "train" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
     fm = sync_fm_action_horizon_from_data(cfg["models"]["fm"], cfg["data"])
     fm["image_pretrained"] = False
     window = int(cfg["data"]["window_size"])

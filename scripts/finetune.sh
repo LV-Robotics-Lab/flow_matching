@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLOW_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$FLOW_ROOT"
 
-CONFIG="configs/finetune/config.yaml"
+CONFIG="${FLOW_ROOT}/configs/finetune/config.yaml"
 GPUS="${CUDA_VISIBLE_DEVICES:-0}"
 PYTHON_BIN="${PYTHON:-python}"
 SKIP_PRECOMPUTE=0
@@ -65,8 +66,13 @@ done
 export CUDA_VISIBLE_DEVICES="$GPUS"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 
-if [[ "$SKIP_PRECOMPUTE" -eq 0 ]]; then
-  "$PYTHON_BIN" tools/precompute_policy_latents.py --config "$CONFIG"
+if [[ "$CONFIG" != /* ]]; then
+  CONFIG="${FLOW_ROOT}/${CONFIG}"
 fi
 
-exec "$PYTHON_BIN" finetune.py --config "$CONFIG"
+if [[ "$SKIP_PRECOMPUTE" -eq 0 ]]; then
+  "$PYTHON_BIN" -m lv_flow_matching.tools.precompute_policy_latents \
+    --config "$CONFIG"
+fi
+
+exec "$PYTHON_BIN" -m lv_flow_matching.finetune --config "$CONFIG"

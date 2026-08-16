@@ -2,8 +2,7 @@
 set -euo pipefail
 
 # Route shared flags to both steps; --force is precompute-only.
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CONFIG=""
 GPUS=""
@@ -70,5 +69,5 @@ if [[ "$FORCE" -eq 1 ]]; then
   PRE_ARGS+=(--force)
 fi
 
-./scripts/precompute.sh "${SHARED_ARGS[@]}" "${PRE_ARGS[@]}"
-./scripts/train.sh "${SHARED_ARGS[@]}"
+"${SCRIPT_DIR}/precompute.sh" "${SHARED_ARGS[@]}" "${PRE_ARGS[@]}"
+"${SCRIPT_DIR}/train.sh" "${SHARED_ARGS[@]}"

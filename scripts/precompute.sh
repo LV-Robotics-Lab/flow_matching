@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLOW_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$FLOW_ROOT"
 
-CONFIG="configs/train/config.yaml"
+CONFIG="${FLOW_ROOT}/configs/train/config.yaml"
 GPUS="${CUDA_VISIBLE_DEVICES:-0}"
 PYTHON_BIN="${PYTHON:-python}"
 FORCE_ARGS=()
@@ -22,13 +23,8 @@ Options:
 
 Writes (scheme A, frame-only):
   {data.latent_cache_root_dir}/frame_backbone.zarr
-  {data.latent_cache_root_dir}/frame_backbone_base_remove_hand.zarr  # if dual zarr has remove-hand
 
-precompute.token_mode: cls | all
-  cls → (T,V,D) / (T_rh,1,D)
-  all → (T,V,257,D) / (T_rh,1,257,D)
-
-Skip rule: existing cache with matching identity + token_mode + full T → skip.
+Skip rule: existing cache with matching identity + full T frames → skip.
 Use --force (or precompute.overwrite=true) to recompute.
 
 Independent of data.window_size / stride / n_image_steps / action_horizon / memory.
@@ -71,4 +67,8 @@ done
 
 export CUDA_VISIBLE_DEVICES="$GPUS"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
-exec "$PYTHON_BIN" tools/precompute_policy_latents.py --config "$CONFIG" "${FORCE_ARGS[@]}"
+if [[ "$CONFIG" != /* ]]; then
+  CONFIG="${FLOW_ROOT}/${CONFIG}"
+fi
+exec "$PYTHON_BIN" -m lv_flow_matching.tools.precompute_policy_latents \
+  --config "$CONFIG" "${FORCE_ARGS[@]}"
