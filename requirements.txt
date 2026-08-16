@@ -1,3 +1,5 @@
+# Legacy flat training environment (Python 3.11+).
+# Prefer: python -m pip install -e '.[train]'
 # Core training (train.py / policy_trainer / eval_open_loop)
 torch>=2.1.0
 numpy>=1.24.0,<2.0.0

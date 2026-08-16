@@ -36,33 +36,36 @@ data:
     max_windows: 100000
   # memory
   memory:
-    enabled: false
-    history_frames: 64
-    sample_stride: 4
-    recent_frame: 4   # n=t-n
+    enabled: true
+    history_frames: 128         # state and visual share 128 sampled instants
+    recent_frame: 0             # both branches end at the current sampled frame
+    visual_history_length: 128
+    sample_stride: 8            # both state and DINO sample every 8 camera frames
+    visual_recent_frame: 0
 
 models:
   fm:
     cond_dim: 256
     # vision — DINOv2 (timm)
     n_image_views: 3
-    image_encoder_name: dinov2_small
-    dino_model_name: vit_small_patch14_dinov2.lvd142m  # vit_small_patch14_dinov2.lvd142m
+    image_encoder_name: dinov2
+    dino_model_name: vit_small_patch14_dinov2.lvd142m
     freeze_image_encoder: true
     image_pretrained: true
     image_feat_dim: 256
+    # Memory target uses current-frame global CLS only (no patch tokens / no base model).
     view_pool: global_concat  # global_concat | local_pool | local_attn
     local_pool_size: 2
     local_attn_heads: 4
     local_attn_dropout: 0.1
-    # tactile cnn
+    # tactile CNN
     use_tactile: false
     tactile_feat_dim: 256
     tactile_temporal_pool: conv1d   # mean | conv1d
     state_feat_dim: 256
-    state_pool: flatten           
+    state_pool: flatten
     diffusion_step_embed_dim: 256
-    velocity_model: dit  # unet | dit
+    velocity_model: unet  # unet | dit
     # unet config
     down_dims: [256, 512, 1024]
     kernel_size: 5
@@ -75,7 +78,7 @@ models:
     dit_dropout: 0.1
     # common config
     num_inference_steps: 32
-    solver: euler 
+    solver: euler
   memory:
     method: fusion # fusion | multi-scale
     injection: concat_global_cond # cross_attn | concat_global_cond
@@ -94,21 +97,28 @@ models:
     state_mem_dim: 64
 
 train:
-  batch_size: 2048
+  # Per-GPU batch size. Start conservatively because 128-step Memory keeps
+  # substantially more activations than the no-Memory main-branch setup.
+  batch_size: 64
   num_workers: 32
   drop_last: true
   pin_memory: true
   persistent_workers: true
   prefetch_factor: 4
+  # global_concat leaves the alternative local-pooling branches unused.
+  ddp_find_unused_parameters: true
   epochs: 256
   grad_clip: 1.0
   use_amp: false
   open_loop_test_every: 300
   open_loop_test_max_batches: 16
   plot_samples: 64
-  plot_dims: auto  
-  max_train_batches: null   
-  resume_path: null        
+  plot_dims: auto
+  max_train_batches: null
+  resume_path: null
+  # full requires optimizer and any configured scheduler/AMP state.
+  # weights-only must be selected explicitly and starts those states fresh.
+  resume_mode: full
   optimizer:
     lr: 3.0e-4
     min_lr: 1.0e-6
@@ -122,7 +132,7 @@ precompute:
   device: cuda
   overwrite: false
   output_path: null
-  token_mode: cls  # cls | all
+  token_mode: cls
 
 deploy:
   action_process: abs_qpos # abs_qpos
