@@ -10,9 +10,17 @@ import yaml
 
 from lv_flow_matching.models.fm import FlowMatchingPolicy, build_flow_policy
 from lv_flow_matching.tools.normalizer import DatasetNormalizer
-from lv_flow_matching.utils.train_utils import cfg_get, sync_fm_action_horizon_from_data
+from lv_flow_matching.infer.config_utils import cfg_get, sync_fm_action_horizon_from_data
+from lv_flow_matching.infer.types import (
+    LEGACY_DUAL_ARM_EEF_ROT6D_DIM,
+    LEGACY_DUAL_ARM_JOINT_DIM,
+)
 
-ACTION_DIMS = {"joint": 14, "eef": 20}
+LEGACY_DUAL_ARM_ACTION_DIMS = {
+    "joint": LEGACY_DUAL_ARM_JOINT_DIM,
+    "eef": LEGACY_DUAL_ARM_EEF_ROT6D_DIM,
+}
+ACTION_DIMS = LEGACY_DUAL_ARM_ACTION_DIMS
 DEFAULT_NUM_INFERENCE_STEPS = 16
 DEFAULT_SOLVER = "euler"
 DEFAULT_VELOCITY_MODEL = "unet"

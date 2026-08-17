@@ -85,9 +85,18 @@ def parse_preprocess_config(
     gripper_names = preprocess_cfg.get("gripper_names")
     if gripper_names is None:
         gripper_names = robot_cfg.get("gripper_names", PreprocessConfig().gripper_names)
-    joint_names = preprocess_cfg.get("joint_names")
+    joint_names = preprocess_cfg.get("joint_names", data_cfg.get("joint_names"))
     if joint_names is None:
         joint_names = DEFAULT_JOINT_NAMES
+    joint_names = tuple(str(name) for name in joint_names)
+    if action_type == "joint" and data_cfg.get("action_dim") is not None:
+        action_dim = int(data_cfg["action_dim"])
+        if action_dim != len(joint_names):
+            raise ValueError(
+                "joint preprocessing contract mismatch: "
+                f"data.action_dim={action_dim} but joint_names has "
+                f"{len(joint_names)} entries"
+            )
 
     use_tactile, tactile_streams = _resolve_tactile_streams(data_cfg, preprocess_cfg)
 
@@ -95,7 +104,7 @@ def parse_preprocess_config(
         action_type=action_type,
         camera_views=camera_views,
         gripper_names={str(k): str(v) for k, v in dict(gripper_names).items()},
-        joint_names=tuple(str(name) for name in joint_names),
+        joint_names=joint_names,
         image_size=int(preprocess_cfg.get("image_size", data_cfg.get("image_size", 224))),
         gripper_width_m=float(
             preprocess_cfg.get(
@@ -126,8 +135,8 @@ def quat_wxyz_to_rot6d(quat_wxyz: Any) -> np.ndarray:
 
 def pose_stamped_to_eef7(msg: Any) -> np.ndarray:
     pose = msg.pose
-    xyz = np.array(
-        [float(pose.position.x), float(pose.position.y), float(pose.position.z)],
+    xyz = np.asarray(
+        (float(pose.position.x), float(pose.position.y), float(pose.position.z)),
         dtype=np.float32,
     )
     quat = np.array(

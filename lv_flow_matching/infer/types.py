@@ -8,10 +8,23 @@ import numpy as np
 from lv_flow_matching.tools.tactile_feat import TACTILE_BUNDLE_ORDER, TACTILE_FEATURE_DIM
 
 
-DEFAULT_JOINT_NAMES: tuple[str, ...] = tuple(
+LEGACY_DUAL_ARM_JOINT_NAMES: tuple[str, ...] = tuple(
     [f"left_joint_{idx}" for idx in range(1, 7)] + ["left_gripper"]
     + [f"right_joint_{idx}" for idx in range(1, 7)] + ["right_gripper"]
 )
+LEGACY_DUAL_ARM_JOINT_DIM = len(LEGACY_DUAL_ARM_JOINT_NAMES)
+LEGACY_DUAL_ARM_EEF_ROT6D_DIM = 20
+LEGACY_DUAL_ARM_DEPLOY_DIM = 14
+LEGACY_THREE_CAMERA_VIEWS = (
+    "base_0_color",
+    "left_wrist_0_color",
+    "right_wrist_0_color",
+)
+LEGACY_DUAL_ARM_EEF_STREAMS = ("robot_state", "left_eef", "right_eef")
+
+# Compatibility alias for downstream deployments. New code should use the
+# explicit legacy-contract name above.
+DEFAULT_JOINT_NAMES = LEGACY_DUAL_ARM_JOINT_NAMES
 
 DEFAULT_TACTILE_POINTCLOUD_SHAPE: tuple[int, int, int] = (35, 20, 6)
 
@@ -28,11 +41,7 @@ DEFAULT_TACTILE_STREAMS: tuple[str, ...] = tuple(
 @dataclass(frozen=True)
 class PreprocessConfig:
     action_type: str = "eef"
-    camera_views: tuple[str, ...] = (
-        "base_0_color",
-        "left_wrist_0_color",
-        "right_wrist_0_color",
-    )
+    camera_views: tuple[str, ...] = LEGACY_THREE_CAMERA_VIEWS
     gripper_names: dict[str, str] = field(
         default_factory=lambda: {"left": "left_gripper", "right": "right_gripper"}
     )
@@ -45,13 +54,19 @@ class PreprocessConfig:
 
     @property
     def state_dim(self) -> int:
-        return 14 if self.action_type == "joint" else 20
+        if self.action_type == "joint":
+            if not self.joint_names:
+                raise ValueError("joint preprocessing requires at least one joint name")
+            return len(self.joint_names)
+        if self.action_type == "eef":
+            return LEGACY_DUAL_ARM_EEF_ROT6D_DIM
+        raise ValueError(f"unsupported action_type={self.action_type!r}")
 
     @property
     def state_stream_names(self) -> tuple[str, ...]:
         if self.action_type == "joint":
             return ("robot_state",)
-        return ("robot_state", "left_eef", "right_eef")
+        return LEGACY_DUAL_ARM_EEF_STREAMS
 
     @property
     def tactile_feature_shape(self) -> tuple[int, int, int]:
