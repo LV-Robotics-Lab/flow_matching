@@ -133,7 +133,7 @@ def doctor() -> dict[str, Any]:
     if set(declared_schemas or ()) != set(EMBODIMENT_SCHEMAS):
         raise RuntimeError("capabilities and adapter embodiment schemas differ")
     if declared["dataset"].get("legacy_default") != LEGACY_EMBODIMENT_SCHEMA:
-        raise RuntimeError("the implicit source contract must remain explicitly legacy")
+        raise RuntimeError("legacy_default must remain an explicit adapter contract field")
     return {
         "ok": True,
         "policy_id": declared["policy_id"],
@@ -213,7 +213,7 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     robot = _mapping(payload.get("robot"), "robot")
     embodiment_schema = _string(
-        robot.get("embodiment_schema", LEGACY_EMBODIMENT_SCHEMA),
+        robot.get("embodiment_schema"),
         "robot.embodiment_schema",
     ).lower()
     try:

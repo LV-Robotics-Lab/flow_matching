@@ -17,10 +17,7 @@ native layout:
 - `franka_wuji_v1`: native 54D joint arrays.
 
 All require RGB views in this order: `base_0`, `left_wrist_0`,
-`right_wrist_0`. Contracts that omit `robot.embodiment_schema` retain the
-legacy `arx_bimanual_v1` behavior; no other embodiment is inferred from robot
-id or action dimension. New embodiments require an explicit named schema and
-contract tests.
+`right_wrist_0`. New embodiments require an explicit named schema and contract tests.
 
 `resume=full_state_non_bit_exact` means the native checkpoint restores model,
 normalizer, optimizer, scheduler, AMP scaler when present, epoch, and global

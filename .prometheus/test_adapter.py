@@ -23,7 +23,8 @@ def _contract(
     dataset_root: Path,
     *,
     action_space: str = "abs_qpos",
-    embodiment_schema: str | None = None,
+    embodiment_schema: str | None = "arx_bimanual_v1",
+    include_schema: bool = True,
 ) -> dict:
     if "eef" in action_space:
         dim = 20
@@ -81,7 +82,7 @@ def _contract(
         "language": {"mode": "none"},
         "normalization": {"method": "none", "owner": "trainer"},
     }
-    if embodiment_schema is not None:
+    if include_schema and embodiment_schema is not None:
         payload["robot"]["embodiment_schema"] = embodiment_schema
     return payload
 
@@ -166,12 +167,12 @@ def test_named_native_joint_schema_binds_exact_dimension(
 def test_named_schema_is_not_inferred_from_dimension(tmp_path: Path) -> None:
     dataset_root = tmp_path / "dataset"
     dataset_root.mkdir()
-    payload = _contract(dataset_root)
+    payload = _contract(dataset_root, include_schema=False)
     payload["action"]["dim"] = 54
     payload["action"]["features"][0]["shape"] = [54]
     payload["observation"]["state"][0]["shape"] = [54]
 
-    with pytest.raises(ValueError, match="requires 14 values"):
+    with pytest.raises(ValueError, match="robot\\.embodiment_schema"):
         adapter.validate_dataset_contract(payload)
 
     payload = _contract(dataset_root, embodiment_schema="franka_wuji_v1")
