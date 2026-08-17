@@ -1,0 +1,33 @@
+{
+  "schema": "prometheus_source_adapter_v1",
+  "policy_id": "lv_flow_matching",
+  "capabilities": {
+    "distributed": "single_host",
+    "hardware_rollout_authorized": false,
+    "resume": "full_state_non_bit_exact"
+  },
+  "dataset": {
+    "format": "prometheus_flow_matching_zarr_v1",
+    "legacy_embodiment_schema": "arx_bimanual_v1",
+    "action_contracts": {
+      "abs_eef_rot6d": 20,
+      "abs_qpos": 14,
+      "relative_eef_rot6d": 20,
+      "relative_qpos": 14
+    },
+    "camera_order": [
+      "base_0",
+      "left_wrist_0",
+      "right_wrist_0"
+    ]
+  },
+  "stages": {
+    "doctor": true,
+    "eval": true,
+    "export": false,
+    "prepare": true,
+    "resume": true,
+    "serve": false,
+    "train": true
+  }
+}
