@@ -180,7 +180,9 @@ def test_multi_gpu_and_resume_are_explicit(tmp_path: Path) -> None:
     assert environment["CUDA_VISIBLE_DEVICES"] == "2,5"
 
 
-def test_artifact_manifest_contains_promotion_contract(tmp_path: Path) -> None:
+def test_artifact_manifest_contains_promotion_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     run_dir = tmp_path / "run"
     checkpoint = run_dir / "checkpoints" / "latest.pt"
     checkpoint.parent.mkdir(parents=True)
@@ -201,6 +203,7 @@ def test_artifact_manifest_contains_promotion_contract(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    monkeypatch.setenv("PROMETHEUS_POLICY_ADAPTER_DIGEST", "3" * 64)
     adapter._write_artifact_manifest(run_dir, config_path)
 
     payload = json.loads((run_dir / "prometheus_artifact.json").read_text())
@@ -217,4 +220,6 @@ def test_artifact_manifest_contains_promotion_contract(tmp_path: Path) -> None:
         "source_revision",
     }
     assert required <= payload.keys()
+    assert payload["adapter_digest"] == "3" * 64
+    assert len(payload["source_adapter_digest"]) == 64
     assert payload["hardware_rollout_authorized"] is False

@@ -415,18 +415,26 @@ def _write_artifact_manifest(run_dir: Path, config_path: Path) -> None:
         raise RuntimeError(f"native training completed without expected checkpoint: {checkpoint}")
     cfg = _load_yaml(config_path, "resolved training config")
     contract = _mapping(cfg.get("prometheus_contract"), "prometheus_contract")
+    parent_adapter_digest = os.environ.get("PROMETHEUS_POLICY_ADAPTER_DIGEST", "").lower()
+    if len(parent_adapter_digest) != 64 or any(
+        char not in "0123456789abcdef" for char in parent_adapter_digest
+    ):
+        raise RuntimeError(
+            "PROMETHEUS_POLICY_ADAPTER_DIGEST is required to emit a promotable artifact"
+        )
     payload = {
         "schema": "prometheus_policy_artifact_v1",
         "policy_type": "lv_flow_matching",
         "action_space": contract["action_space"],
         "action_dim": contract["action_dim"],
-        "adapter_digest": _sha256_file(Path(__file__).resolve()),
+        "adapter_digest": parent_adapter_digest,
         "checkpoint": str(checkpoint),
         "checkpoint_digest": _sha256_file(checkpoint),
         "dataset_digest": contract["dataset_digest"],
         "resolved_config_digest": _sha256_file(config_path),
         "robot_schema_digests": contract["robot_schema_digests"],
         "source_revision": _source_revision(),
+        "source_adapter_digest": _sha256_file(Path(__file__).resolve()),
         "normalization_owner": "trainer",
         "legacy_embodiment_schema": contract["legacy_embodiment_schema"],
         "hardware_rollout_authorized": False,
