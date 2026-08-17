@@ -445,11 +445,16 @@ def _source_revision() -> str:
     return process.stdout.strip()
 
 
-def _write_artifact_manifest(run_dir: Path, config_path: Path) -> None:
+def _write_artifact_manifest(run_dir: Path) -> None:
     checkpoint = run_dir / "checkpoints" / "latest.pt"
     if not checkpoint.is_file():
         raise RuntimeError(f"native training completed without expected checkpoint: {checkpoint}")
-    cfg = _load_yaml(config_path, "resolved training config")
+    resolved_config = run_dir / "resolved_config.yaml"
+    if not resolved_config.is_file():
+        raise RuntimeError(
+            f"native training completed without resolved config: {resolved_config}"
+        )
+    cfg = _load_yaml(resolved_config, "resolved training config")
     contract = _mapping(cfg.get("prometheus_contract"), "prometheus_contract")
     parent_adapter_digest = os.environ.get("PROMETHEUS_POLICY_ADAPTER_DIGEST", "").lower()
     if len(parent_adapter_digest) != 64 or any(
@@ -467,7 +472,8 @@ def _write_artifact_manifest(run_dir: Path, config_path: Path) -> None:
         "checkpoint": str(checkpoint),
         "checkpoint_digest": _sha256_file(checkpoint),
         "dataset_digest": contract["dataset_digest"],
-        "resolved_config_digest": _sha256_file(config_path),
+        "resolved_config": str(resolved_config),
+        "resolved_config_digest": _sha256_file(resolved_config),
         "robot_schema_digests": contract["robot_schema_digests"],
         "source_revision": _source_revision(),
         "source_adapter_digest": _sha256_file(Path(__file__).resolve()),
@@ -562,8 +568,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if process.returncode != 0:
         return process.returncode
     if args.command in {"train", "resume"}:
-        assert config_path is not None
-        _write_artifact_manifest(run_dir, config_path)
+        _write_artifact_manifest(run_dir)
     return 0
 
 

@@ -211,8 +211,8 @@ def test_artifact_manifest_contains_promotion_contract(
     checkpoint = run_dir / "checkpoints" / "latest.pt"
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_bytes(b"checkpoint")
-    config_path = run_dir / "prometheus_train_config.yaml"
-    config_path.write_text(
+    resolved_config = run_dir / "resolved_config.yaml"
+    resolved_config.write_text(
         yaml.safe_dump(
             {
                 "prometheus_contract": {
@@ -228,7 +228,7 @@ def test_artifact_manifest_contains_promotion_contract(
     )
 
     monkeypatch.setenv("PROMETHEUS_POLICY_ADAPTER_DIGEST", "3" * 64)
-    adapter._write_artifact_manifest(run_dir, config_path)
+    adapter._write_artifact_manifest(run_dir)
 
     payload = json.loads((run_dir / "prometheus_artifact.json").read_text())
     required = {
