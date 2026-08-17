@@ -180,6 +180,30 @@ def test_multi_gpu_and_resume_are_explicit(tmp_path: Path) -> None:
     assert environment["CUDA_VISIBLE_DEVICES"] == "2,5"
 
 
+def test_existing_run_is_bound_to_exact_dataset_contract(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "dataset"
+    dataset_root.mkdir()
+    contract_path = _write_contract(tmp_path, _contract(dataset_root))
+    run_dir = tmp_path / "run"
+    config, _ = adapter.build_resolved_config(
+        ROOT / "configs/train/config.yaml", contract_path, run_dir
+    )
+    run_dir.mkdir()
+    (run_dir / "resolved_config.yaml").write_text(
+        yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+    )
+
+    selected = adapter.validate_run_contract(run_dir, contract_path)
+    assert selected["action_dim"] == 14
+
+    changed = _contract(dataset_root)
+    changed["dataset"]["digest"] = "9" * 64
+    changed_path = tmp_path / "changed.yaml"
+    changed_path.write_text(yaml.safe_dump(changed, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match"):
+        adapter.validate_run_contract(run_dir, changed_path)
+
+
 def test_artifact_manifest_contains_promotion_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

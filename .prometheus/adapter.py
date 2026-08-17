@@ -315,6 +315,42 @@ def build_resolved_config(
     return cfg, run_dir / "prometheus_train_config.yaml"
 
 
+def validate_run_contract(run_dir: Path, dataset_contract: Path) -> dict[str, Any]:
+    """Bind resume/eval to the exact dataset and robot schema used by the run."""
+
+    run_dir = _ensure_external_run_dir(run_dir)
+    contract_path = dataset_contract.expanduser().resolve()
+    selected = validate_dataset_contract(
+        _load_yaml(contract_path, "dataset contract")
+    )
+    resolved_path = run_dir / "resolved_config.yaml"
+    if not resolved_path.is_file():
+        raise FileNotFoundError(f"missing native resolved config: {resolved_path}")
+    resolved = _load_yaml(resolved_path, "native resolved config")
+    recorded = _mapping(resolved.get("prometheus_contract"), "prometheus_contract")
+    expected = {
+        "dataset_contract_digest": _sha256_file(contract_path),
+        "dataset_digest": selected["dataset_digest"],
+        "robot_schema_digests": selected["robot_schema_digests"],
+        "action_space": selected["action_space"],
+        "action_dim": selected["action_dim"],
+        "legacy_embodiment_schema": "arx_bimanual_v1",
+    }
+    mismatches = {
+        key: {"recorded": recorded.get(key), "requested": value}
+        for key, value in expected.items()
+        if recorded.get(key) != value
+    }
+    if mismatches:
+        raise ValueError(
+            "dataset contract does not match the existing training run: "
+            + json.dumps(mismatches, sort_keys=True)
+        )
+    if recorded.get("hardware_rollout_authorized") is not False:
+        raise ValueError("existing run does not retain the hardware rollout prohibition")
+    return selected
+
+
 def write_resolved_config(config: Mapping[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
@@ -479,6 +515,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_dir = _ensure_external_run_dir(args.run_dir)
     config_path: Path | None = None
     if args.command in {"prepare", "train", "resume"}:
+        if args.command == "train" and (
+            (run_dir / "resolved_config.yaml").exists()
+            or (run_dir / "checkpoints").exists()
+        ):
+            raise FileExistsError(
+                "train refuses an existing native run; use the explicit resume stage"
+            )
+        if args.command == "resume":
+            validate_run_contract(run_dir, args.dataset_contract)
         base_config = args.base_config
         if base_config is None:
             base_config = (
@@ -490,10 +535,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             base_config, args.dataset_contract, run_dir
         )
     else:
-        contract = _load_yaml(args.dataset_contract.expanduser().resolve(), "dataset contract")
-        validate_dataset_contract(contract)
-        if not (run_dir / "resolved_config.yaml").is_file():
-            raise FileNotFoundError(f"missing native resolved config: {run_dir / 'resolved_config.yaml'}")
+        validate_run_contract(run_dir, args.dataset_contract)
 
     command, environment = build_native_argv(
         args.command,
