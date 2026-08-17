@@ -1,6 +1,6 @@
 {
   "schema": "prometheus_source_adapter_v1",
-  "policy_id": "lv_flow_matching",
+  "policy_id": "flow_matching",
   "capabilities": {
     "distributed": "single_host",
     "hardware_rollout_authorized": false,
