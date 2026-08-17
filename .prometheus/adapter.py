@@ -132,8 +132,11 @@ def doctor() -> dict[str, Any]:
     declared_schemas = declared["dataset"].get("embodiment_schemas")
     if set(declared_schemas or ()) != set(EMBODIMENT_SCHEMAS):
         raise RuntimeError("capabilities and adapter embodiment schemas differ")
-    if declared["dataset"].get("legacy_default") != LEGACY_EMBODIMENT_SCHEMA:
-        raise RuntimeError("legacy_default must remain an explicit adapter contract field")
+    if declared["dataset"].get("legacy_embodiment_schema") != LEGACY_EMBODIMENT_SCHEMA:
+        raise RuntimeError(
+            f"the historical fixed source contract must stay named "
+            f"{LEGACY_EMBODIMENT_SCHEMA!r}; it is never applied by default"
+        )
     return {
         "ok": True,
         "policy_id": declared["policy_id"],
@@ -212,6 +215,11 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("dataset.digest must be a 64-character SHA-256 digest")
 
     robot = _mapping(payload.get("robot"), "robot")
+    if robot.get("embodiment_schema") is None:
+        raise ValueError(
+            "robot.embodiment_schema is required; Flow Matching will not assume the "
+            f"legacy {LEGACY_EMBODIMENT_SCHEMA!r} layout for an unlabelled dataset"
+        )
     embodiment_schema = _string(
         robot.get("embodiment_schema"),
         "robot.embodiment_schema",
