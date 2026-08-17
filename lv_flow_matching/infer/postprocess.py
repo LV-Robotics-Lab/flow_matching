@@ -4,10 +4,17 @@ from typing import Any
 
 import numpy as np
 
+from lv_flow_matching.infer.types import (
+    LEGACY_DUAL_ARM_DEPLOY_DIM,
+    LEGACY_DUAL_ARM_EEF_ROT6D_DIM,
+)
 from lv_flow_matching.tools.action import rot6d_to_matrix
 
 
-PROCESSED_ACTION_DIMS = {"abs_eef": 14, "abs_qpos": 14}
+PROCESSED_ACTION_DIMS = {
+    "abs_eef": LEGACY_DUAL_ARM_DEPLOY_DIM,
+    "abs_qpos": LEGACY_DUAL_ARM_DEPLOY_DIM,
+}
 
 
 def processed_action_dim(process: str, *, native_action_dim: int | None = None) -> int:
@@ -88,7 +95,9 @@ def rot6d_to_rpy(rot6d: Any) -> np.ndarray:
 
 
 def eef_rot6d_abs_to_rpy_abs(arm20: Any) -> np.ndarray:
-    arm20 = np.asarray(arm20, dtype=np.float32).reshape(20)
+    arm20 = np.asarray(arm20, dtype=np.float32).reshape(
+        LEGACY_DUAL_ARM_EEF_ROT6D_DIM
+    )
     left = arm20[:10]
     right = arm20[10:]
     left7 = np.concatenate([left[:3], rot6d_to_rpy(left[3:9]), left[9:10]], axis=0)
@@ -107,9 +116,13 @@ def apply_action_process(
     if process == "abs_eef":
         if traj.ndim == 1:
             return eef_rot6d_abs_to_rpy_abs(traj)
-        if traj.ndim == 2 and traj.shape[-1] == 20:
+        if traj.ndim == 2 and traj.shape[-1] == LEGACY_DUAL_ARM_EEF_ROT6D_DIM:
             return np.stack([eef_rot6d_abs_to_rpy_abs(row) for row in traj], axis=0)
-        raise ValueError(f"abs_eef expects (20,) or (T,20), got shape {traj.shape}")
+        raise ValueError(
+            "abs_eef is the named legacy dual-arm rot6d contract and expects "
+            f"({LEGACY_DUAL_ARM_EEF_ROT6D_DIM},) or "
+            f"(T,{LEGACY_DUAL_ARM_EEF_ROT6D_DIM}), got shape {traj.shape}"
+        )
     if process == "abs_qpos":
         expected_dim = processed_action_dim(
             process,

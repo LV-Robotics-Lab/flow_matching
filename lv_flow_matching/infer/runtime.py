@@ -28,7 +28,7 @@ from lv_flow_matching.infer.tensor import as_float32_array, default_tactile_norm
 from lv_flow_matching.infer.types import InferenceChunk, PreprocessConfig
 from lv_flow_matching.tools.normalizer import DatasetNormalizer
 from lv_flow_matching.tools.async_dino_buffer import AsyncDinoBuffer
-from lv_flow_matching.utils.train_utils import cfg_get
+from lv_flow_matching.infer.config_utils import cfg_get
 
 _IDENTITY_ROT6D = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float32)
 
