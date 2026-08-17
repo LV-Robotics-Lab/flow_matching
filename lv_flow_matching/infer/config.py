@@ -95,7 +95,21 @@ def action_dim_for_config(cfg: Mapping[str, Any]) -> int:
     action_type = str(cfg_get(cfg, "data.action_type", "eef"))
     if action_type not in ACTION_DIMS:
         raise ValueError(f"unsupported data.action_type={action_type!r}")
-    return ACTION_DIMS[action_type]
+    default = ACTION_DIMS[action_type]
+    configured = cfg_get(cfg, "data.action_dim", None)
+    if configured is None:
+        return default
+    if isinstance(configured, bool) or not isinstance(configured, int):
+        raise TypeError(f"data.action_dim must be an integer, got {configured!r}")
+    resolved = configured
+    if resolved <= 0:
+        raise ValueError(f"data.action_dim must be positive, got {resolved}")
+    if action_type == "eef" and resolved != default:
+        raise ValueError(
+            "custom data.action_dim is only supported for joint data; "
+            f"eef requires {default}, got {resolved}"
+        )
+    return resolved
 
 
 def build_policy_from_cfg(

@@ -19,14 +19,22 @@ adapter = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(adapter)
 
 
-def _contract(dataset_root: Path, *, action_space: str = "abs_qpos") -> dict:
+def _contract(
+    dataset_root: Path,
+    *,
+    action_space: str = "abs_qpos",
+    embodiment_schema: str | None = None,
+) -> dict:
     if "eef" in action_space:
         dim = 20
         frame = "dual_eef_rot6d"
+    elif embodiment_schema == "franka_wuji_v1":
+        dim = 54
+        frame = "joint"
     else:
         dim = 14
         frame = "joint"
-    return {
+    payload = {
         "schema": "prometheus_training_dataset_v1",
         "dataset": {
             "id": "fixture",
@@ -73,6 +81,9 @@ def _contract(dataset_root: Path, *, action_space: str = "abs_qpos") -> dict:
         "language": {"mode": "none"},
         "normalization": {"method": "none", "owner": "trainer"},
     }
+    if embodiment_schema is not None:
+        payload["robot"]["embodiment_schema"] = embodiment_schema
+    return payload
 
 
 def _write_contract(tmp_path: Path, payload: dict) -> Path:
@@ -121,11 +132,52 @@ def test_resolved_config_binds_contract_and_external_run_dir(
     assert config["data"]["action_type"] == expected_type
     assert config["data"]["action_representation"] == expected_representation
     assert config["data"]["action_horizon"] == 32
+    assert "action_dim" not in config["data"]
     assert config["output"] == {"root_dir": str(tmp_path), "run_name": "run"}
     assert config["prometheus_contract"]["action_dim"] == expected_dim
     assert config["prometheus_contract"]["robot_schema_digests"] == ["2" * 64]
     assert config["prometheus_contract"]["hardware_rollout_authorized"] is False
     assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    ("embodiment_schema", "expected_dim"),
+    [("cobot_magic_v1", 14), ("franka_wuji_v1", 54)],
+)
+def test_named_native_joint_schema_binds_exact_dimension(
+    tmp_path: Path, embodiment_schema: str, expected_dim: int
+) -> None:
+    dataset_root = tmp_path / "dataset"
+    dataset_root.mkdir()
+    contract_path = _write_contract(
+        tmp_path,
+        _contract(dataset_root, embodiment_schema=embodiment_schema),
+    )
+
+    config, _ = adapter.build_resolved_config(
+        ROOT / "configs/train/config.yaml", contract_path, tmp_path / "run"
+    )
+
+    assert config["data"]["action_dim"] == expected_dim
+    assert config["prometheus_contract"]["action_dim"] == expected_dim
+    assert config["prometheus_contract"]["embodiment_schema"] == embodiment_schema
+
+
+def test_named_schema_is_not_inferred_from_dimension(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "dataset"
+    dataset_root.mkdir()
+    payload = _contract(dataset_root)
+    payload["action"]["dim"] = 54
+    payload["action"]["features"][0]["shape"] = [54]
+    payload["observation"]["state"][0]["shape"] = [54]
+
+    with pytest.raises(ValueError, match="requires 14 values"):
+        adapter.validate_dataset_contract(payload)
+
+    payload = _contract(dataset_root, embodiment_schema="franka_wuji_v1")
+    payload["robot"]["embodiment_schema"] = "unknown_robot_v1"
+    with pytest.raises(ValueError, match="unsupported robot.embodiment_schema"):
+        adapter.validate_dataset_contract(payload)
 
 
 def test_rejects_wrong_dimension_camera_order_and_remote_uri(tmp_path: Path) -> None:
@@ -232,7 +284,7 @@ def test_artifact_manifest_contains_promotion_contract(
                     "action_dim": 14,
                     "dataset_digest": "1" * 64,
                     "robot_schema_digests": ["2" * 64],
-                    "legacy_embodiment_schema": "arx_bimanual_v1",
+                    "embodiment_schema": "arx_bimanual_v1",
                 }
             }
         ),
@@ -254,8 +306,10 @@ def test_artifact_manifest_contains_promotion_contract(
         "normalization_owner",
         "robot_schema_digests",
         "source_revision",
+        "embodiment_schema",
     }
     assert required <= payload.keys()
     assert payload["adapter_digest"] == "3" * 64
+    assert payload["embodiment_schema"] == "arx_bimanual_v1"
     assert len(payload["source_adapter_digest"]) == 64
     assert payload["hardware_rollout_authorized"] is False

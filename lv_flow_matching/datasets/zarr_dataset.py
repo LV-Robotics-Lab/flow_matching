@@ -126,6 +126,7 @@ class ZarrDataset(Dataset):
         n_image_steps: int = 1,
         action_horizon: int = 32,
         action_type: str = "eef",
+        action_dim: int | None = None,
         action_representation: str = "relative",
         use_tactile: bool = True,
         image_size: int = 224,
@@ -158,8 +159,13 @@ class ZarrDataset(Dataset):
 
         self.action_type = self._resolve_action_type(action_type)
         self.action_representation = self._normalize_action_representation(action_representation)
-        self.robot_slice = _ROBOT_SLICES[self.action_type]
-        self.action_dim = _ROBOT_DIMS[self.action_type]
+        self._explicit_action_dim = action_dim is not None
+        self.action_dim = self._resolve_action_dim(self.action_type, action_dim)
+        self.robot_slice = (
+            slice(0, self.action_dim)
+            if self._explicit_action_dim
+            else _ROBOT_SLICES[self.action_type]
+        )
 
         self.use_tactile = bool(use_tactile)
         self.tactile_dim = TACTILE_FEATURE_DIM
@@ -349,6 +355,23 @@ class ZarrDataset(Dataset):
         return rep
 
     @staticmethod
+    def _resolve_action_dim(action_type: str, action_dim: int | None) -> int:
+        default = _ROBOT_DIMS[action_type]
+        if action_dim is None:
+            return default
+        if isinstance(action_dim, bool) or not isinstance(action_dim, int):
+            raise TypeError(f"action_dim must be an integer, got {action_dim!r}")
+        resolved = action_dim
+        if resolved <= 0:
+            raise ValueError(f"action_dim must be positive, got {resolved}")
+        if action_type == "eef" and resolved != default:
+            raise ValueError(
+                "custom action_dim is only supported for joint data; "
+                f"eef requires {default}, got {resolved}"
+            )
+        return resolved
+
+    @staticmethod
     def _resolve_zarr_path(root_dir: str) -> str:
         if root_dir.endswith(".zarr") and os.path.isdir(root_dir):
             return root_dir
@@ -488,6 +511,19 @@ class ZarrDataset(Dataset):
     def _zarr_camera_view_count(self) -> int:
         if self.camera_key not in self.data_group:
             raise KeyError(f"Missing key in zarr data group: {self.camera_key}")
+        for key in (self.state_key, self.action_key):
+            shape = tuple(int(value) for value in self.data_group[key].shape)
+            if len(shape) < 2:
+                raise ValueError(f"{key} must be at least 2D, got shape={shape}")
+            if self._explicit_action_dim and shape[-1] != self.action_dim:
+                raise ValueError(
+                    f"{key} last dim {shape[-1]} != configured action_dim={self.action_dim}"
+                )
+            required_dim = int(self.robot_slice.stop)
+            if shape[-1] < required_dim:
+                raise ValueError(
+                    f"{key} last dim {shape[-1]} is smaller than required dim {required_dim}"
+                )
         return int(self.data_group[self.camera_key].shape[-1] // 3)
 
     def _validate_required_keys(self) -> None:

@@ -510,10 +510,17 @@ class FMInferenceRuntime:
             num_inference_steps=num_inference_steps,
             solver=solver,
         )
-        actions = apply_action_process(pred_rot6d, self.deploy.action_process)
+        actions = apply_action_process(
+            pred_rot6d,
+            self.deploy.action_process,
+            native_action_dim=self.action_dim,
+        )
         expected = (
             self.action_horizon,
-            processed_action_dim(self.deploy.action_process),
+            processed_action_dim(
+                self.deploy.action_process,
+                native_action_dim=self.action_dim,
+            ),
         )
         if actions.shape != expected:
             raise ValueError(f"postprocess shape {actions.shape} != expected {expected}")

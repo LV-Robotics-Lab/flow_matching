@@ -8,12 +8,30 @@
   },
   "dataset": {
     "format": "prometheus_flow_matching_zarr_v1",
-    "legacy_embodiment_schema": "arx_bimanual_v1",
-    "action_contracts": {
-      "abs_eef_rot6d": 20,
-      "abs_qpos": 14,
-      "relative_eef_rot6d": 20,
-      "relative_qpos": 14
+    "legacy_default": "arx_bimanual_v1",
+    "embodiment_schemas": {
+      "arx_bimanual_v1": {
+        "action_contracts": {
+          "abs_eef_rot6d": 20,
+          "abs_qpos": 14,
+          "relative_eef_rot6d": 20,
+          "relative_qpos": 14
+        },
+        "native_array_dim": null
+      },
+      "cobot_magic_v1": {
+        "action_contracts": {
+          "abs_qpos": 14,
+          "relative_qpos": 14
+        },
+        "native_array_dim": 14
+      },
+      "franka_wuji_v1": {
+        "action_contracts": {
+          "abs_qpos": 54
+        },
+        "native_array_dim": 54
+      }
     },
     "camera_order": [
       "base_0",
