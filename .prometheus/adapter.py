@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Hardware-free Prometheus adapter for LV Robotics Flow Matching.
 
 The adapter translates a versioned dataset contract into the native YAML
@@ -15,13 +14,13 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPABILITIES_PATH = Path(__file__).with_name("capabilities.json")
@@ -44,13 +43,13 @@ REQUIRED_PATHS = (
 
 def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise ValueError(f"{label} must be a mapping")
+        raise TypeError(f"{label} must be a mapping")
     return value
 
 
 def _list(value: Any, label: str) -> list[Any]:
     if not isinstance(value, list):
-        raise ValueError(f"{label} must be a list")
+        raise TypeError(f"{label} must be a list")
     return value
 
 
@@ -70,7 +69,8 @@ def _feature_size(value: Any, label: str) -> int:
     feature = _mapping(value, label)
     shape = _list(feature.get("shape"), f"{label}.shape")
     if not shape or any(
-        not isinstance(item, int) or isinstance(item, bool) or item <= 0 for item in shape
+        not isinstance(item, int) or isinstance(item, bool) or item <= 0
+        for item in shape
     ):
         raise ValueError(f"{label}.shape must contain positive integers")
     size = 1
@@ -90,11 +90,15 @@ def capabilities() -> dict[str, Any]:
 
 def doctor() -> dict[str, Any]:
     declared = capabilities()
-    missing = [path.as_posix() for path in REQUIRED_PATHS if not (ROOT / path).is_file()]
+    missing = [
+        path.as_posix() for path in REQUIRED_PATHS if not (ROOT / path).is_file()
+    ]
     if missing:
         raise RuntimeError(f"missing required Flow Matching paths: {missing}")
     if declared["dataset"]["legacy_embodiment_schema"] != "arx_bimanual_v1":
-        raise RuntimeError("the fixed 14D/20D source contract must remain explicitly legacy")
+        raise RuntimeError(
+            "the fixed 14D/20D source contract must remain explicitly legacy"
+        )
     return {
         "ok": True,
         "policy_id": declared["policy_id"],
@@ -145,7 +149,9 @@ def _camera_names(observation: Mapping[str, Any]) -> tuple[str, ...]:
             "arx_bimanual_v1 requires camera order "
             f"{list(CAMERA_ORDER)}, got {list(selected)}"
         )
-    color_order = _string(observation.get("color_order"), "observation.color_order").upper()
+    color_order = _string(
+        observation.get("color_order"), "observation.color_order"
+    ).upper()
     if color_order != "RGB":
         raise ValueError("Flow Matching training boundary requires RGB images")
     return selected
@@ -236,7 +242,11 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     sampling = _mapping(payload.get("sampling"), "sampling")
     rate_hz = sampling.get("rate_hz")
-    if not isinstance(rate_hz, (int, float)) or isinstance(rate_hz, bool) or rate_hz <= 0:
+    if (
+        not isinstance(rate_hz, (int, float))
+        or isinstance(rate_hz, bool)
+        or rate_hz <= 0
+    ):
         raise ValueError("sampling.rate_hz must be positive")
     horizon = _positive_int(action.get("horizon"), "action.horizon")
     return {
@@ -297,7 +307,9 @@ def build_resolved_config(
         }
     )
     cfg["output"].update({"root_dir": str(run_dir.parent), "run_name": run_dir.name})
-    cfg["precompute"]["output_path"] = str(run_dir / "latent_cache" / "frame_backbone.zarr")
+    cfg["precompute"]["output_path"] = str(
+        run_dir / "latent_cache" / "frame_backbone.zarr"
+    )
     cfg["deploy"].update(
         {"action_process": selected["deploy_process"], "action_hz": selected["rate_hz"]}
     )
@@ -320,9 +332,7 @@ def validate_run_contract(run_dir: Path, dataset_contract: Path) -> dict[str, An
 
     run_dir = _ensure_external_run_dir(run_dir)
     contract_path = dataset_contract.expanduser().resolve()
-    selected = validate_dataset_contract(
-        _load_yaml(contract_path, "dataset contract")
-    )
+    selected = validate_dataset_contract(_load_yaml(contract_path, "dataset contract"))
     resolved_path = run_dir / "resolved_config.yaml"
     if not resolved_path.is_file():
         raise FileNotFoundError(f"missing native resolved config: {resolved_path}")
@@ -347,14 +357,18 @@ def validate_run_contract(run_dir: Path, dataset_contract: Path) -> dict[str, An
             + json.dumps(mismatches, sort_keys=True)
         )
     if recorded.get("hardware_rollout_authorized") is not False:
-        raise ValueError("existing run does not retain the hardware rollout prohibition")
+        raise ValueError(
+            "existing run does not retain the hardware rollout prohibition"
+        )
     return selected
 
 
 def write_resolved_config(config: Mapping[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
-    temporary.write_text(yaml.safe_dump(dict(config), sort_keys=False), encoding="utf-8")
+    temporary.write_text(
+        yaml.safe_dump(dict(config), sort_keys=False), encoding="utf-8"
+    )
     temporary.replace(path)
 
 
@@ -399,7 +413,9 @@ def build_native_argv(
                 raise ValueError("full-state resume requires --checkpoint")
             resolved_checkpoint = checkpoint.expanduser().resolve()
             if not resolved_checkpoint.is_file():
-                raise FileNotFoundError(f"resume checkpoint does not exist: {resolved_checkpoint}")
+                raise FileNotFoundError(
+                    f"resume checkpoint does not exist: {resolved_checkpoint}"
+                )
             module_args.extend(
                 ["--resume", str(resolved_checkpoint), "--resume-mode", "full"]
             )
@@ -448,7 +464,9 @@ def _source_revision() -> str:
 def _write_artifact_manifest(run_dir: Path) -> None:
     checkpoint = run_dir / "checkpoints" / "latest.pt"
     if not checkpoint.is_file():
-        raise RuntimeError(f"native training completed without expected checkpoint: {checkpoint}")
+        raise RuntimeError(
+            f"native training completed without expected checkpoint: {checkpoint}"
+        )
     resolved_config = run_dir / "resolved_config.yaml"
     if not resolved_config.is_file():
         raise RuntimeError(
@@ -456,7 +474,9 @@ def _write_artifact_manifest(run_dir: Path) -> None:
         )
     cfg = _load_yaml(resolved_config, "resolved training config")
     contract = _mapping(cfg.get("prometheus_contract"), "prometheus_contract")
-    parent_adapter_digest = os.environ.get("PROMETHEUS_POLICY_ADAPTER_DIGEST", "").lower()
+    parent_adapter_digest = os.environ.get(
+        "PROMETHEUS_POLICY_ADAPTER_DIGEST", ""
+    ).lower()
     if len(parent_adapter_digest) != 64 or any(
         char not in "0123456789abcdef" for char in parent_adapter_digest
     ):
@@ -483,7 +503,9 @@ def _write_artifact_manifest(run_dir: Path) -> None:
     }
     path = run_dir / "prometheus_artifact.json"
     temporary = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     temporary.replace(path)
 
 

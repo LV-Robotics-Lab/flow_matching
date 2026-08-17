@@ -9,10 +9,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER_PATH = Path(__file__).with_name("adapter.py")
-SPEC = importlib.util.spec_from_file_location("flow_matching_prometheus_adapter", ADAPTER_PATH)
+SPEC = importlib.util.spec_from_file_location(
+    "flow_matching_prometheus_adapter", ADAPTER_PATH
+)
 assert SPEC is not None and SPEC.loader is not None
 adapter = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(adapter)
@@ -43,10 +44,19 @@ def _contract(dataset_root: Path, *, action_space: str = "abs_qpos") -> dict:
         "observation": {
             "color_order": "RGB",
             "state": [
-                {"name": "observation.state", "shape": [dim], "dtype": "float32", "unit": "rad"}
+                {
+                    "name": "observation.state",
+                    "shape": [dim],
+                    "dtype": "float32",
+                    "unit": "rad",
+                }
             ],
             "images": [
-                {"name": f"observation.images.{name}", "shape": [8, 8, 3], "dtype": "uint8"}
+                {
+                    "name": f"observation.images.{name}",
+                    "shape": [8, 8, 3],
+                    "dtype": "uint8",
+                }
                 for name in adapter.CAMERA_ORDER
             ],
             "tactile": [],
@@ -97,7 +107,9 @@ def test_resolved_config_binds_contract_and_external_run_dir(
 ) -> None:
     dataset_root = tmp_path / "dataset"
     dataset_root.mkdir()
-    contract_path = _write_contract(tmp_path, _contract(dataset_root, action_space=action_space))
+    contract_path = _write_contract(
+        tmp_path, _contract(dataset_root, action_space=action_space)
+    )
     run_dir = tmp_path / "run"
 
     config, path = adapter.build_resolved_config(
