@@ -23,8 +23,7 @@ def _contract(
     dataset_root: Path,
     *,
     action_space: str = "abs_qpos",
-    embodiment_schema: str | None = "arx_bimanual_v1",
-    include_schema: bool = True,
+    embodiment_schema: str | None = adapter.LEGACY_EMBODIMENT_SCHEMA,
 ) -> dict:
     if "eef" in action_space:
         dim = 20
@@ -82,7 +81,7 @@ def _contract(
         "language": {"mode": "none"},
         "normalization": {"method": "none", "owner": "trainer"},
     }
-    if include_schema and embodiment_schema is not None:
+    if embodiment_schema is not None:
         payload["robot"]["embodiment_schema"] = embodiment_schema
     return payload
 
@@ -164,15 +163,29 @@ def test_named_native_joint_schema_binds_exact_dimension(
     assert config["prometheus_contract"]["embodiment_schema"] == embodiment_schema
 
 
+def test_unlabelled_dataset_is_rejected_instead_of_assumed_legacy(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "dataset"
+    dataset_root.mkdir()
+    payload = _contract(dataset_root, embodiment_schema=None)
+    assert "embodiment_schema" not in payload["robot"]
+
+    with pytest.raises(ValueError, match="robot.embodiment_schema is required"):
+        adapter.validate_dataset_contract(payload)
+
+    payload["robot"]["embodiment_schema"] = adapter.LEGACY_EMBODIMENT_SCHEMA
+    selected = adapter.validate_dataset_contract(payload)
+    assert selected["embodiment_schema"] == adapter.LEGACY_EMBODIMENT_SCHEMA
+
+
 def test_named_schema_is_not_inferred_from_dimension(tmp_path: Path) -> None:
     dataset_root = tmp_path / "dataset"
     dataset_root.mkdir()
-    payload = _contract(dataset_root, include_schema=False)
+    payload = _contract(dataset_root)
     payload["action"]["dim"] = 54
     payload["action"]["features"][0]["shape"] = [54]
     payload["observation"]["state"][0]["shape"] = [54]
 
-    with pytest.raises(ValueError, match="robot\\.embodiment_schema"):
+    with pytest.raises(ValueError, match="requires 14 values"):
         adapter.validate_dataset_contract(payload)
 
     payload = _contract(dataset_root, embodiment_schema="franka_wuji_v1")

@@ -8,8 +8,8 @@ and writes the resolved native training config into the external run
 directory. It never writes datasets, caches, checkpoints, or generated config
 into this source checkout and never authorizes hardware rollout.
 
-The source-specific extension `robot.embodiment_schema` selects one exact
-native layout:
+The required contract field `robot.embodiment_schema` selects one exact native
+layout:
 
 - `arx_bimanual_v1`: legacy 34D native arrays, sliced into dual-arm joint 14D
   or EEF 20D (`xyz + rot6d + gripper` per arm);
@@ -17,7 +17,10 @@ native layout:
 - `franka_wuji_v1`: native 54D joint arrays.
 
 All require RGB views in this order: `base_0`, `left_wrist_0`,
-`right_wrist_0`. New embodiments require an explicit named schema and contract tests.
+`right_wrist_0`. A contract that omits `robot.embodiment_schema` is rejected —
+`arx_bimanual_v1` is the name of the historical layout, not a fallback for an
+unlabelled dataset — and no embodiment is ever inferred from robot id or action
+dimension. New embodiments require an explicit named schema and contract tests.
 
 `resume=full_state_non_bit_exact` means the native checkpoint restores model,
 normalizer, optimizer, scheduler, AMP scaler when present, epoch, and global
