@@ -540,25 +540,31 @@ def random_smoke_obs(
     *,
     seed: int = 0,
 ) -> tuple[dict[str, np.ndarray], np.ndarray]:
-    """Finite random obs for __main__ smoke (no zarr). rot6d uses identity columns."""
+    """Finite random obs matching the configured deployment action contract."""
     rng = np.random.default_rng(int(seed))
     window_size = runtime.window_size
     action_dim = runtime.action_dim
     image_size = int(cfg_get(runtime.policy_cfg, "data.image_size", 224))
     n_views = runtime.n_image_views
 
-    state_raw = np.zeros((window_size, action_dim), dtype=np.float32)
-    if action_dim == 14:
-        for t in range(window_size):
-            state_raw[t] = rng.normal(0.0, 0.05, size=14).astype(np.float32)
-            state_raw[t, [6, 13]] = rng.uniform(0.0, 0.05, size=2).astype(np.float32)
-    else:
+    action_process = str(runtime.deploy.action_process)
+    if action_process == "abs_qpos":
+        state_raw = rng.normal(
+            0.0,
+            0.05,
+            size=(window_size, action_dim),
+        ).astype(np.float32)
+    elif action_process == "abs_eef":
+        processed_action_dim(action_process, native_action_dim=action_dim)
+        state_raw = np.zeros((window_size, action_dim), dtype=np.float32)
         for t in range(window_size):
             for arm in range(2):
-                base = arm * (action_dim // 2)
+                base = arm * 10
                 state_raw[t, base : base + 3] = rng.normal(0.0, 0.05, size=3).astype(np.float32)
                 state_raw[t, base + 3 : base + 9] = _IDENTITY_ROT6D
                 state_raw[t, base + 9] = float(rng.uniform(0.0, 0.05))
+    else:
+        raise ValueError(f"unsupported deploy.action_process={action_process!r}")
 
     state_norm = runtime.normalizer.normalize_state_np(state_raw)
     image = rng.integers(0, 256, size=(1, 1, n_views, 3, image_size, image_size), dtype=np.uint8)

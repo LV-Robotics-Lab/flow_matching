@@ -18,14 +18,28 @@ PROCESSED_ACTION_DIMS = {
 
 
 def processed_action_dim(process: str, *, native_action_dim: int | None = None) -> int:
+    """Resolve the actuator dimension without an unnamed fallback.
+
+    abs_qpos carries the embodiment's own width, so a declared
+    native_action_dim wins. abs_eef is the named legacy dual-arm contract and
+    only accepts its 20D rot6d input, rather than quietly reporting 14 for a
+    checkpoint whose state is some other width.
+    """
     key = str(process)
     if key not in PROCESSED_ACTION_DIMS:
         raise ValueError(f"unsupported deploy.action_process={process!r}")
-    if key == "abs_qpos" and native_action_dim is not None:
-        resolved = int(native_action_dim)
-        if resolved <= 0:
-            raise ValueError(f"native_action_dim must be positive, got {resolved}")
+    if native_action_dim is None:
+        return PROCESSED_ACTION_DIMS[key]
+    resolved = int(native_action_dim)
+    if resolved <= 0:
+        raise ValueError(f"native_action_dim must be positive, got {resolved}")
+    if key == "abs_qpos":
         return resolved
+    if resolved != LEGACY_DUAL_ARM_EEF_ROT6D_DIM:
+        raise ValueError(
+            "abs_eef is the named legacy dual-arm 20D rot6d -> 14D RPY "
+            f"contract, got native_action_dim={resolved}"
+        )
     return PROCESSED_ACTION_DIMS[key]
 
 
