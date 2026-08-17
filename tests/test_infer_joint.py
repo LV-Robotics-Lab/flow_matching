@@ -53,6 +53,19 @@ def test_apply_action_process_abs_qpos_pass_through():
     np.testing.assert_array_equal(out, traj)
 
 
+def test_apply_action_process_abs_qpos_supports_explicit_native_dimension():
+    traj = np.arange(3 * 54, dtype=np.float64).reshape(3, 54)
+
+    out = apply_action_process(traj, "abs_qpos", native_action_dim=54)
+
+    assert out.shape == (3, 54)
+    assert out.dtype == np.float32
+    np.testing.assert_array_equal(out, traj)
+
+    with pytest.raises(ValueError, match=r"expects \(14,\)"):
+        apply_action_process(np.zeros(54), "abs_qpos")
+
+
 def test_apply_action_process_abs_eef_converts_20d_rot6d_to_14d_rpy():
     traj = np.zeros((4, 20), dtype=np.float32)
     identity_rot6d = np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float32)

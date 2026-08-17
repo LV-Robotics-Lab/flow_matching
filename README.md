@@ -55,6 +55,12 @@ Finetuning runs precompute first unless `--skip-precompute` is passed:
 ./scripts/finetune.sh --config /absolute/path/finetune.yaml --gpus 0
 ```
 
+Hardware-free Cobot Magic and Franka/Wuji templates, their exact source
+provenance, and the fail-closed external-output launcher are documented in
+[`docs/EMBODIMENT_PROFILES.md`](docs/EMBODIMENT_PROFILES.md). Use
+`scripts/train_embodiment.sh` for those profiles; hardware branches do not own
+their trainers or policy-source gitlinks.
+
 `HF_HUB_OFFLINE=1` remains the launcher default. A fresh machine must provide
 the configured DINO weights in `pretrained_weights/` or an existing Hugging
 Face cache before training.

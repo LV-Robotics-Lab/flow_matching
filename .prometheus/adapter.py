@@ -26,11 +26,45 @@ ROOT = Path(__file__).resolve().parents[1]
 CAPABILITIES_PATH = Path(__file__).with_name("capabilities.json")
 DEFAULT_CONFIG = ROOT / "configs" / "train" / "config.yaml"
 CAMERA_ORDER = ("base_0", "left_wrist_0", "right_wrist_0")
-ACTION_CONTRACTS = {
+LEGACY_EMBODIMENT_SCHEMA = "arx_bimanual_v1"
+_JOINT_14_CONTRACTS = {
     "abs_qpos": ("joint", "absolute", "joint", 14, "abs_qpos"),
     "relative_qpos": ("joint", "relative", "joint", 14, "abs_qpos"),
-    "abs_eef_rot6d": ("eef", "absolute", "dual_eef_rot6d", 20, "abs_eef"),
-    "relative_eef_rot6d": ("eef", "relative", "dual_eef_rot6d", 20, "abs_eef"),
+}
+EMBODIMENT_SCHEMAS = {
+    LEGACY_EMBODIMENT_SCHEMA: {
+        "camera_order": CAMERA_ORDER,
+        "native_array_dim": None,
+        "action_contracts": {
+            **_JOINT_14_CONTRACTS,
+            "abs_eef_rot6d": (
+                "eef",
+                "absolute",
+                "dual_eef_rot6d",
+                20,
+                "abs_eef",
+            ),
+            "relative_eef_rot6d": (
+                "eef",
+                "relative",
+                "dual_eef_rot6d",
+                20,
+                "abs_eef",
+            ),
+        },
+    },
+    "cobot_magic_v1": {
+        "camera_order": CAMERA_ORDER,
+        "native_array_dim": 14,
+        "action_contracts": _JOINT_14_CONTRACTS,
+    },
+    "franka_wuji_v1": {
+        "camera_order": CAMERA_ORDER,
+        "native_array_dim": 54,
+        "action_contracts": {
+            "abs_qpos": ("joint", "absolute", "joint", 54, "abs_qpos"),
+        },
+    },
 }
 REQUIRED_PATHS = (
     Path("pyproject.toml"),
@@ -95,10 +129,11 @@ def doctor() -> dict[str, Any]:
     ]
     if missing:
         raise RuntimeError(f"missing required Flow Matching paths: {missing}")
-    if declared["dataset"]["legacy_embodiment_schema"] != "arx_bimanual_v1":
-        raise RuntimeError(
-            "the fixed 14D/20D source contract must remain explicitly legacy"
-        )
+    declared_schemas = declared["dataset"].get("embodiment_schemas")
+    if set(declared_schemas or ()) != set(EMBODIMENT_SCHEMAS):
+        raise RuntimeError("capabilities and adapter embodiment schemas differ")
+    if declared["dataset"].get("legacy_default") != LEGACY_EMBODIMENT_SCHEMA:
+        raise RuntimeError("legacy_default must remain an explicit adapter contract field")
     return {
         "ok": True,
         "policy_id": declared["policy_id"],
@@ -136,7 +171,12 @@ def _dataset_path(uri: str) -> Path:
     return resolved
 
 
-def _camera_names(observation: Mapping[str, Any]) -> tuple[str, ...]:
+def _camera_names(
+    observation: Mapping[str, Any],
+    *,
+    embodiment_schema: str,
+    expected_order: Sequence[str],
+) -> tuple[str, ...]:
     images = _list(observation.get("images"), "observation.images")
     names: list[str] = []
     for index, item in enumerate(images):
@@ -144,10 +184,11 @@ def _camera_names(observation: Mapping[str, Any]) -> tuple[str, ...]:
         name = _string(feature.get("name"), f"observation.images[{index}].name")
         names.append(name.rsplit(".", 1)[-1])
     selected = tuple(names)
-    if selected != CAMERA_ORDER:
+    expected = tuple(expected_order)
+    if selected != expected:
         raise ValueError(
-            "arx_bimanual_v1 requires camera order "
-            f"{list(CAMERA_ORDER)}, got {list(selected)}"
+            f"{embodiment_schema} requires camera order "
+            f"{list(expected)}, got {list(selected)}"
         )
     color_order = _string(
         observation.get("color_order"), "observation.color_order"
@@ -171,6 +212,17 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("dataset.digest must be a 64-character SHA-256 digest")
 
     robot = _mapping(payload.get("robot"), "robot")
+    embodiment_schema = _string(
+        robot.get("embodiment_schema"),
+        "robot.embodiment_schema",
+    ).lower()
+    try:
+        embodiment = EMBODIMENT_SCHEMAS[embodiment_schema]
+    except KeyError as exc:
+        raise ValueError(
+            f"unsupported robot.embodiment_schema={embodiment_schema!r}; "
+            f"expected one of {sorted(EMBODIMENT_SCHEMAS)}"
+        ) from exc
     schema_sources = _list(robot.get("schema_sources"), "robot.schema_sources")
     if not schema_sources:
         raise ValueError("robot.schema_sources must be non-empty")
@@ -189,7 +241,11 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
         robot_schema_digests.append(source_digest)
 
     observation = _mapping(payload.get("observation"), "observation")
-    camera_views = _camera_names(observation)
+    camera_views = _camera_names(
+        observation,
+        embodiment_schema=embodiment_schema,
+        expected_order=embodiment["camera_order"],
+    )
     state = _list(observation.get("state"), "observation.state")
     state_dim = sum(
         _feature_size(item, f"observation.state[{index}]")
@@ -199,13 +255,14 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     action = _mapping(payload.get("action"), "action")
     action_space = _string(action.get("space"), "action.space").lower()
-    if action_space not in ACTION_CONTRACTS:
+    action_contracts = embodiment["action_contracts"]
+    if action_space not in action_contracts:
         raise ValueError(
-            f"unsupported action.space={action_space!r}; "
-            f"expected one of {sorted(ACTION_CONTRACTS)}"
+            f"unsupported action.space={action_space!r} for {embodiment_schema}; "
+            f"expected one of {sorted(action_contracts)}"
         )
     action_type, representation, expected_frame, expected_dim, deploy_process = (
-        ACTION_CONTRACTS[action_space]
+        action_contracts[action_space]
     )
     frame = _string(action.get("frame"), "action.frame").lower()
     if frame != expected_frame:
@@ -253,6 +310,8 @@ def validate_dataset_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
         "dataset_root": dataset_root,
         "dataset_digest": digest,
         "robot_schema_digests": robot_schema_digests,
+        "embodiment_schema": embodiment_schema,
+        "native_array_dim": embodiment["native_array_dim"],
         "action_type": action_type,
         "action_representation": representation,
         "action_space": action_space,
@@ -300,6 +359,13 @@ def build_resolved_config(
             "latent_cache_root_dir": str(run_dir / "latent_cache"),
         }
     )
+    if selected["native_array_dim"] is None:
+        # Legacy ARX Zarr stores joint and EEF values in one 34D array. The
+        # native dataset must retain its historical slice instead of treating
+        # action.dim as the raw array width.
+        cfg["data"].pop("action_dim", None)
+    else:
+        cfg["data"]["action_dim"] = selected["native_array_dim"]
     cfg["models"]["fm"].update(
         {
             "n_image_views": len(selected["camera_views"]),
@@ -319,7 +385,7 @@ def build_resolved_config(
         "dataset_contract_digest": _sha256_file(contract_path),
         "dataset_digest": selected["dataset_digest"],
         "robot_schema_digests": selected["robot_schema_digests"],
-        "legacy_embodiment_schema": "arx_bimanual_v1",
+        "embodiment_schema": selected["embodiment_schema"],
         "action_space": selected["action_space"],
         "action_dim": selected["action_dim"],
         "hardware_rollout_authorized": False,
@@ -344,7 +410,7 @@ def validate_run_contract(run_dir: Path, dataset_contract: Path) -> dict[str, An
         "robot_schema_digests": selected["robot_schema_digests"],
         "action_space": selected["action_space"],
         "action_dim": selected["action_dim"],
-        "legacy_embodiment_schema": "arx_bimanual_v1",
+        "embodiment_schema": selected["embodiment_schema"],
     }
     mismatches = {
         key: {"recorded": recorded.get(key), "requested": value}
@@ -498,7 +564,7 @@ def _write_artifact_manifest(run_dir: Path) -> None:
         "source_revision": _source_revision(),
         "source_adapter_digest": _sha256_file(Path(__file__).resolve()),
         "normalization_owner": "trainer",
-        "legacy_embodiment_schema": contract["legacy_embodiment_schema"],
+        "embodiment_schema": contract["embodiment_schema"],
         "hardware_rollout_authorized": False,
     }
     path = run_dir / "prometheus_artifact.json"

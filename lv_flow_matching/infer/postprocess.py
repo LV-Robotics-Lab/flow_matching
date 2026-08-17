@@ -7,16 +7,18 @@ import numpy as np
 from lv_flow_matching.tools.action import rot6d_to_matrix
 
 
-PROCESSED_ACTION_DIMS = {
-    "abs_eef": 14,
-    "abs_qpos": 14,
-}
+PROCESSED_ACTION_DIMS = {"abs_eef": 14, "abs_qpos": 14}
 
 
-def processed_action_dim(process: str) -> int:
+def processed_action_dim(process: str, *, native_action_dim: int | None = None) -> int:
     key = str(process)
     if key not in PROCESSED_ACTION_DIMS:
         raise ValueError(f"unsupported deploy.action_process={process!r}")
+    if key == "abs_qpos" and native_action_dim is not None:
+        resolved = int(native_action_dim)
+        if resolved <= 0:
+            raise ValueError(f"native_action_dim must be positive, got {resolved}")
+        return resolved
     return PROCESSED_ACTION_DIMS[key]
 
 
@@ -94,7 +96,12 @@ def eef_rot6d_abs_to_rpy_abs(arm20: Any) -> np.ndarray:
     return np.concatenate([left7, right7], axis=0).astype(np.float32, copy=False)
 
 
-def apply_action_process(traj: Any, process: str) -> np.ndarray:
+def apply_action_process(
+    traj: Any,
+    process: str,
+    *,
+    native_action_dim: int | None = None,
+) -> np.ndarray:
     traj = np.asarray(traj, dtype=np.float32)
     process = str(process)
     if process == "abs_eef":
@@ -104,11 +111,20 @@ def apply_action_process(traj: Any, process: str) -> np.ndarray:
             return np.stack([eef_rot6d_abs_to_rpy_abs(row) for row in traj], axis=0)
         raise ValueError(f"abs_eef expects (20,) or (T,20), got shape {traj.shape}")
     if process == "abs_qpos":
+        expected_dim = processed_action_dim(
+            process,
+            native_action_dim=native_action_dim,
+        )
         if traj.ndim == 1:
-            if traj.shape[0] != 14:
-                raise ValueError(f"abs_qpos expects (14,), got shape {traj.shape}")
+            if traj.shape[0] != expected_dim:
+                raise ValueError(
+                    f"abs_qpos expects ({expected_dim},), got shape {traj.shape}"
+                )
             return traj.astype(np.float32, copy=False)
-        if traj.ndim == 2 and traj.shape[-1] == 14:
+        if traj.ndim == 2 and traj.shape[-1] == expected_dim:
             return traj.astype(np.float32, copy=False)
-        raise ValueError(f"abs_qpos expects (14,) or (T,14), got shape {traj.shape}")
+        raise ValueError(
+            f"abs_qpos expects ({expected_dim},) or (T,{expected_dim}), "
+            f"got shape {traj.shape}"
+        )
     raise ValueError(f"unsupported deploy.action_process={process!r}")

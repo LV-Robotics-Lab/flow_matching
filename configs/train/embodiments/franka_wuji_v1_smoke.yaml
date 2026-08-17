@@ -1,0 +1,95 @@
+profile:
+  id: franka_wuji_v1_smoke
+  embodiment: franka_wuji_v1
+  provenance:
+    repository: https://github.com/LV-Robotics-Lab/PrometheusV4.git
+    branch: hardware/franka-wuji
+    revision: a9d42927951432f5945f5434e4de4f24880e9964
+    source_path: prometheus/policy/flow_matching/configs/train/franka_wuji_smoke.yaml
+    source_sha256: a084fb7715fe77deac15443862d2150dfa0b381ee31debdf4c11c755de93b08b
+  hardware_imports_allowed: false
+  status: smoke
+
+seed: 42
+runtime:
+  device: cuda
+
+output:
+  root_dir: /absolute/path/to/policy-artifacts/franka_wuji_v1
+  run_name: franka_wuji_v1_smoke
+
+data:
+  root_dir: /absolute/path/to/policy-datasets/franka_wuji_v1
+  window_size: 8
+  stride: 1
+  n_image_steps: 1
+  action_horizon: 16
+  max_windows: 64
+  action_type: joint
+  action_dim: 54
+  action_representation: absolute
+  use_tactile: false
+  mix_base_remove_hand: false
+  camera_views: [base_0, left_wrist_0, right_wrist_0]
+  image_size: 224
+  image_as_uint8: true
+  use_camera_latent: false
+  camera_key: camera
+  state_key: state_30hz
+  action_key: action_30hz
+  norm:
+    output_range: [-1, 1]
+    max_windows: 64
+  memory:
+    enabled: false
+
+models:
+  fm:
+    cond_dim: 128
+    n_image_views: 3
+    image_encoder_name: dinov2
+    dino_model_name: vit_small_patch14_dinov2.lvd142m
+    freeze_image_encoder: true
+    image_pretrained: true
+    image_feat_dim: 128
+    view_pool: global_concat
+    use_tactile: false
+    tactile_feat_dim: 64
+    tactile_temporal_pool: mean
+    state_feat_dim: 128
+    state_pool: flatten
+    diffusion_step_embed_dim: 128
+    velocity_model: unet
+    down_dims: [64, 128, 256]
+    kernel_size: 5
+    n_groups: 8
+    num_inference_steps: 2
+    solver: euler
+
+train:
+  batch_size: 1
+  num_workers: 0
+  drop_last: true
+  pin_memory: true
+  persistent_workers: false
+  prefetch_factor: 2
+  epochs: 1
+  grad_clip: 1.0
+  use_amp: true
+  open_loop_test_every: 1
+  open_loop_test_max_batches: 1
+  plot_samples: 1
+  plot_dims: 0,1,2,7,8,9,14,15,16,34,35,36,53
+  max_train_batches: 2
+  resume_path: null
+  optimizer:
+    lr: 0.0003
+    min_lr: 0.000001
+    weight_decay: 0.0001
+
+checkpoint:
+  save_every: 1
+
+deploy:
+  action_process: abs_qpos
+  action_hz: 30.0

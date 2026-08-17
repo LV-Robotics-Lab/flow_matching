@@ -3,21 +3,21 @@
 This directory is the hardware-free boundary between the pinned Flow Matching
 training source and PrometheusV4's `prometheus_policy_adapter_v1` runner.
 
-The adapter consumes an explicit `prometheus_training_dataset_v1` YAML file,
-rejects datasets outside the source's current legacy ARX-bimanual contract,
+The adapter consumes an explicit `prometheus_training_dataset_v1` YAML file
 and writes the resolved native training config into the external run
 directory. It never writes datasets, caches, checkpoints, or generated config
 into this source checkout and never authorizes hardware rollout.
 
-The current source supports exactly two action layouts:
+The source-specific extension `robot.embodiment_schema` selects one exact
+native layout:
 
-- dual-arm joint, 14 values;
-- dual-arm EEF, 20 values (`xyz + rot6d + gripper` per arm).
+- `arx_bimanual_v1`: legacy 34D native arrays, sliced into dual-arm joint 14D
+  or EEF 20D (`xyz + rot6d + gripper` per arm);
+- `cobot_magic_v1`: native 14D joint arrays;
+- `franka_wuji_v1`: native 54D joint arrays.
 
-Both require RGB views in this order: `base_0`, `left_wrist_0`,
-`right_wrist_0`. This is deliberately named `arx_bimanual_v1`; it is not a
-generic robot contract. A future embodiment must first make the native dataset
-and model dimensions configurable and add its own contract tests.
+All require RGB views in this order: `base_0`, `left_wrist_0`,
+`right_wrist_0`. New embodiments require an explicit named schema and contract tests.
 
 `resume=full_state_non_bit_exact` means the native checkpoint restores model,
 normalizer, optimizer, scheduler, AMP scaler when present, epoch, and global

@@ -33,6 +33,7 @@ jobs:
           ./scripts/precompute.sh --help
           ./scripts/finetune.sh --help
           ./scripts/run_all.sh --help
+          ./scripts/train_embodiment.sh --help
 
       - name: Run hardware-independent tests
         run: python -m pytest -q .prometheus/test_adapter.py tests
