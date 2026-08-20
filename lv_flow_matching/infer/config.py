@@ -130,6 +130,8 @@ def build_policy_from_cfg(
     fm_cfg = sync_fm_action_horizon_from_data(cfg["models"]["fm"], data_cfg)
     if match_training:
         fm_cfg["use_tactile"] = bool(data_cfg.get("use_tactile", fm_cfg.get("use_tactile", True)))
+    # Auxiliary losses are training-only and are not constructor inputs for the inference policy.
+    fm_cfg.pop("auxiliary_loss", None)
     fm_cfg = resolve_fm_cfg_for_inference(fm_cfg, policy_state_dict)
     cfg_for_build = dict(cfg)
     cfg_for_build["models"] = dict(cfg["models"])

@@ -10,6 +10,7 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any, Dict, Iterable, Literal, Mapping, Optional
 
+import numpy as np
 import torch
 import yaml
 from torch.nn.parallel import DistributedDataParallel
@@ -233,6 +234,25 @@ def build_policy(cfg: dict, device: torch.device, dataset: ZarrDataset) -> FlowM
         state_dim=dataset.action_dim,
         cond_steps=dataset.window_size,
     ).to(device)
+    auxiliary = dict(fm_cfg.get("auxiliary_loss") or {})
+    if float(auxiliary.get("bounds", 0.0)) > 0.0:
+        action_min = auxiliary.get("action_min")
+        action_max = auxiliary.get("action_max")
+        if action_min is None or action_max is None:
+            raise ValueError(
+                "models.fm.auxiliary_loss bounds weight requires action_min/action_max"
+            )
+        if dataset.action_representation != "absolute":
+            raise ValueError(
+                "physical action bounds auxiliary loss currently requires absolute actions"
+            )
+        lower = dataset.normalizer.action.normalize_np(
+            np.asarray(action_min, dtype=np.float32)
+        )
+        upper = dataset.normalizer.action.normalize_np(
+            np.asarray(action_max, dtype=np.float32)
+        )
+        policy.configure_normalized_action_bounds(lower, upper)
     return policy
 
 

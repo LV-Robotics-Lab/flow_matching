@@ -4,9 +4,9 @@ profile:
   provenance:
     repository: https://github.com/LV-Robotics-Lab/PrometheusV4.git
     branch: hardware/cobot-daimon
-    revision: b5e15520db97e070cf3becc675ab06b36c75dc02
+    revision: c8310dac89164c8aea4cfa0397b8d64ef6dd330d
     source_path: prometheus/policy/flow_matching/configs/train/cobot_magic_joint_unet_teleop_daimon25.yaml
-    source_sha256: 58b47e2027988ac69afe2ecc3255fdae5fa3ce9dcc1b9303566fbb54239c974a
+    source_sha256: e207e986d24abe73d33ce5301686a09eefa60cbd7b20377bb6f7fef50b6c11e3
   hardware_imports_allowed: false
   status: maintained
 
@@ -20,7 +20,7 @@ runtime:
 
 output:
   root_dir: ${paths.data_root}/artifacts
-  run_name: cobot_magic_v1
+  run_name: cobot_magic_v1_aux_safety_v1
 
 data:
   root_dir: ${paths.data_root}/data/teleop_daimon_fm_25hz
@@ -84,6 +84,13 @@ models:
     dit_dropout: 0.1
     num_inference_steps: 32
     solver: euler
+    auxiliary_loss:
+      clean_action: 0.1
+      first_action: 0.5
+      velocity: 0.25
+      bounds: 0.25
+      action_min: [-1.5176, 0.0, -2.9655, -0.9553, -1.2211, -1.5961, 0.0, -0.3750, 0.0, -2.1464, -1.2188, -0.9200, -0.5045, 0.0]
+      action_max: [0.2133, 2.3618, 0.0, 1.5719, 1.2211, 0.4225, 0.0961, 0.7780, 2.1146, 0.0, 1.5377, 0.7834, 1.2974, 0.0831]
   memory:
     method: fusion
     injection: concat_global_cond
@@ -109,7 +116,7 @@ train:
   ddp_find_unused_parameters: true
   epochs: 200
   grad_clip: 1.0
-  use_amp: true
+  use_amp: false
   open_loop_test_every: 20
   open_loop_test_max_batches: 16
   plot_samples: 32

@@ -71,6 +71,7 @@ class FlowMatchingPolicy(nn.Module):
         memory_cross_attn_layers: Sequence[int] = (3, 7, 11),
         num_inference_steps: int = 16,
         solver: str = "euler",
+        auxiliary_loss: Mapping[str, Any] | None = None,
     ):
         super().__init__()
         self.action_dim = int(action_dim)
@@ -119,6 +120,17 @@ class FlowMatchingPolicy(nn.Module):
         self.solver = str(solver).lower()
         if self.solver not in {"euler", "heun"}:
             raise ValueError(f"unsupported solver={solver!r}")
+        auxiliary = dict(auxiliary_loss or {})
+        self.auxiliary_loss_weights = {
+            "clean_action": float(auxiliary.get("clean_action", 0.0)),
+            "first_action": float(auxiliary.get("first_action", 0.0)),
+            "velocity": float(auxiliary.get("velocity", 0.0)),
+            "bounds": float(auxiliary.get("bounds", 0.0)),
+        }
+        if any(value < 0.0 for value in self.auxiliary_loss_weights.values()):
+            raise ValueError("auxiliary loss weights must be non-negative")
+        self._normalized_action_min: torch.Tensor | None = None
+        self._normalized_action_max: torch.Tensor | None = None
 
         self.condition_encoder = ConditionEncoder(
             state_dim=self.state_dim,
@@ -410,6 +422,65 @@ class FlowMatchingPolicy(nn.Module):
             )
         return self.model(sample, timestep, local_cond=None, global_cond=global_cond)
 
+    def configure_normalized_action_bounds(
+        self,
+        action_min: torch.Tensor,
+        action_max: torch.Tensor,
+    ) -> None:
+        lower = torch.as_tensor(action_min, dtype=torch.float32).reshape(-1)
+        upper = torch.as_tensor(action_max, dtype=torch.float32).reshape(-1)
+        expected = (self.action_dim,)
+        if lower.shape != expected or upper.shape != expected:
+            raise ValueError(
+                f"normalized action bounds must have shape {expected}, got "
+                f"{lower.shape} and {upper.shape}"
+            )
+        if not torch.isfinite(lower).all() or not torch.isfinite(upper).all():
+            raise ValueError("normalized action bounds contain NaN or inf")
+        if torch.any(lower >= upper):
+            raise ValueError("normalized action_min must be less than action_max")
+        self._normalized_action_min = lower
+        self._normalized_action_max = upper
+
+    def _auxiliary_losses(
+        self,
+        *,
+        clean_action: torch.Tensor,
+        target_action: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        losses = {
+            "clean_action_loss": F.smooth_l1_loss(clean_action, target_action),
+            "first_action_loss": F.smooth_l1_loss(
+                clean_action[:, 0], target_action[:, 0]
+            ),
+        }
+        if clean_action.shape[1] > 1:
+            losses["velocity_loss"] = F.smooth_l1_loss(
+                torch.diff(clean_action, dim=1),
+                torch.diff(target_action, dim=1),
+            )
+        else:
+            losses["velocity_loss"] = clean_action.new_zeros(())
+
+        if self.auxiliary_loss_weights["bounds"] > 0.0:
+            if self._normalized_action_min is None or self._normalized_action_max is None:
+                raise RuntimeError(
+                    "bounds auxiliary loss requires configured normalized action bounds"
+                )
+            lower = self._normalized_action_min.to(
+                device=clean_action.device, dtype=clean_action.dtype
+            )
+            upper = self._normalized_action_max.to(
+                device=clean_action.device, dtype=clean_action.dtype
+            )
+            violation = torch.relu(lower - clean_action) + torch.relu(
+                clean_action - upper
+            )
+            losses["bounds_loss"] = violation.square().mean()
+        else:
+            losses["bounds_loss"] = clean_action.new_zeros(())
+        return losses
+
     def compute_loss(self, batch: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         obs = batch["obs"]
         actions = self._pad_or_trim_time(batch["action"], self.action_horizon)
@@ -438,13 +509,36 @@ class FlowMatchingPolicy(nn.Module):
             global_cond=global_cond,
             condition_tokens=condition_tokens,
         )
-        loss = F.mse_loss(pred_velocity, target_velocity, reduction="none")
-        loss = loss * loss_mask.to(loss.dtype)
-        loss = loss.reshape(loss.shape[0], -1).mean(dim=1).mean()
+        flow_loss = F.mse_loss(pred_velocity, target_velocity, reduction="none")
+        flow_loss = flow_loss * loss_mask.to(flow_loss.dtype)
+        flow_loss = flow_loss.reshape(flow_loss.shape[0], -1).mean(dim=1).mean()
+
+        # For the straight flow xt=(1-t)x0+t*x1 and v=x1-x0,
+        # xt+(1-t)v is the clean action x1. These structural losses emphasize
+        # deploy-relevant trajectory properties without replacing the FM loss.
+        clean_action = xt + (1.0 - t_broadcast) * pred_velocity
+        auxiliary = self._auxiliary_losses(
+            clean_action=clean_action,
+            target_action=x1,
+        )
+        loss = flow_loss
+        loss = loss + self.auxiliary_loss_weights["clean_action"] * auxiliary[
+            "clean_action_loss"
+        ]
+        loss = loss + self.auxiliary_loss_weights["first_action"] * auxiliary[
+            "first_action_loss"
+        ]
+        loss = loss + self.auxiliary_loss_weights["velocity"] * auxiliary[
+            "velocity_loss"
+        ]
+        loss = loss + self.auxiliary_loss_weights["bounds"] * auxiliary["bounds_loss"]
 
         return {
             "loss": loss,
-            "metrics": {"flow_matching_loss": loss.detach()},
+            "metrics": {
+                "flow_matching_loss": flow_loss.detach(),
+                **{name: value.detach() for name, value in auxiliary.items()},
+            },
         }
 
     @torch.no_grad()

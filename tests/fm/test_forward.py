@@ -10,6 +10,7 @@ import yaml
 _FLOW_MATCHING_ROOT = Path(__file__).resolve().parents[2]
 
 from lv_flow_matching.models.fm import build_flow_policy
+from lv_flow_matching.models.fm.flow_policy import FlowMatchingPolicy
 from lv_flow_matching.utils.train_utils import sync_fm_action_horizon_from_data
 
 
@@ -118,8 +119,61 @@ def test_backbone_feat_forward_backward() -> None:
     print("backbone_feat forward/backward OK, loss=", float(out["loss"].detach()))
 
 
+def test_auxiliary_losses_are_finite_and_differentiable() -> None:
+    policy = FlowMatchingPolicy.__new__(FlowMatchingPolicy)
+    torch.nn.Module.__init__(policy)
+    policy.action_dim = 2
+    policy.auxiliary_loss_weights = {
+        "clean_action": 0.1,
+        "first_action": 0.5,
+        "velocity": 0.25,
+        "bounds": 0.25,
+    }
+    policy.configure_normalized_action_bounds(
+        torch.tensor([-1.0, -1.0]), torch.tensor([1.0, 1.0])
+    )
+    clean = torch.tensor(
+        [[[1.2, 0.0], [0.5, -1.3], [0.0, 0.0]]],
+        requires_grad=True,
+    )
+    target = torch.zeros_like(clean)
+    losses = policy._auxiliary_losses(
+        clean_action=clean,
+        target_action=target,
+    )
+    assert set(losses) == {
+        "clean_action_loss",
+        "first_action_loss",
+        "velocity_loss",
+        "bounds_loss",
+    }
+    total = sum(losses.values())
+    assert torch.isfinite(total)
+    assert losses["bounds_loss"] > 0
+    total.backward()
+    assert clean.grad is not None
+    assert torch.isfinite(clean.grad).all()
+
+
+def test_zarr_window_anchor_contract() -> None:
+    from lv_flow_matching.datasets.zarr_dataset import ZarrDataset
+
+    dataset = ZarrDataset.__new__(ZarrDataset)
+    dataset.windows = [(7, 100, 0, "original")]
+    dataset.episode_starts = torch.tensor([0]).numpy()
+    dataset.episode_ends = torch.tensor([100]).numpy()
+    dataset.window_size = 8
+    dataset.action_horizon = 32
+
+    assert dataset.state_range(0) == (0, 8)
+    assert dataset.action_range(0) == (7, 39)
+    assert dataset.state_range(0)[1] - 1 == dataset.action_range(0)[0]
+
+
 if __name__ == "__main__":
     test_mock_forward_backward()
     test_predict_action_shape()
     test_backbone_feat_forward_backward()
+    test_auxiliary_losses_are_finite_and_differentiable()
+    test_zarr_window_anchor_contract()
     print("[test_forward] all passed")
