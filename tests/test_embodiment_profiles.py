@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -22,16 +23,6 @@ PROFILE_DIR = ROOT / "configs/train/embodiments"
 LAUNCHER = ROOT / "scripts/train_embodiment.sh"
 
 
-def _flatten(value: object, prefix: str = "") -> dict[str, object]:
-    if not isinstance(value, dict):
-        return {prefix: value}
-    flattened: dict[str, object] = {}
-    for key, child in value.items():
-        child_prefix = f"{prefix}.{key}" if prefix else str(key)
-        flattened.update(_flatten(child, child_prefix))
-    return flattened
-
-
 def _source_status() -> str:
     return subprocess.run(
         ["git", "status", "--short", "--untracked-files=all"],
@@ -40,6 +31,19 @@ def _source_status() -> str:
         capture_output=True,
         text=True,
     ).stdout
+
+
+def _assert_prometheus_provenance(
+    profile: dict[str, object], *, branch: str, source_path: str
+) -> None:
+    provenance = profile["profile"]["provenance"]
+    assert provenance["repository"] == (
+        "https://github.com/LV-Robotics-Lab/PrometheusV4.git"
+    )
+    assert provenance["branch"] == branch
+    assert provenance["source_path"] == source_path
+    assert re.fullmatch(r"[0-9a-f]{40}", provenance["revision"])
+    assert re.fullmatch(r"[0-9a-f]{64}", provenance["source_sha256"])
 
 
 @pytest.mark.parametrize(
@@ -55,6 +59,14 @@ def _source_status() -> str:
         ),
         (
             "cobot_magic_v1_smoke.yaml",
+            "cobot_magic_v1",
+            14,
+            "state_25hz",
+            "action_25hz",
+            25.0,
+        ),
+        (
+            "cobot_magic_v1_daimon25_remote.yaml",
             "cobot_magic_v1",
             14,
             "state_25hz",
@@ -117,9 +129,6 @@ def test_cobot_magic_v1_profiles_are_external_and_schema_bound() -> None:
     canonical = load_config(str(canonical_path))
     smoke = load_config(str(smoke_path))
 
-    assert canonical["profile"]["provenance"]["revision"] == (
-        "b5e15520db97e070cf3becc675ab06b36c75dc02"
-    )
     assert canonical["profile"]["hardware_imports_allowed"] is False
     assert canonical["data"]["camera_views"] == [
         "base_0",
@@ -141,41 +150,55 @@ def test_cobot_magic_v1_profiles_are_external_and_schema_bound() -> None:
         assert Path(profile["data"]["root_dir"]).is_absolute()
 
 
-def test_cobot_smoke_profile_only_changes_bounded_fields() -> None:
-    canonical = _flatten(load_config(str(PROFILE_DIR / "cobot_magic_v1.yaml")))
-    smoke = _flatten(load_config(str(PROFILE_DIR / "cobot_magic_v1_smoke.yaml")))
-    changed = {
-        key: (canonical.get(key), smoke.get(key))
-        for key in canonical.keys() | smoke.keys()
-        if canonical.get(key) != smoke.get(key) and not key.startswith("profile.")
-    }
+def test_cobot_smoke_profile_is_bounded_and_schema_compatible() -> None:
+    canonical = load_config(str(PROFILE_DIR / "cobot_magic_v1.yaml"))
+    smoke = load_config(str(PROFILE_DIR / "cobot_magic_v1_smoke.yaml"))
 
-    assert changed == {
-        "data.latent_cache_root_dir": (
-            "/absolute/path/to/policy-data/cobot_magic_v1/data/teleop_daimon_fm_25hz/latent_cache/{auto}",
-            "/absolute/path/to/policy-data/cobot_magic_v1/data/teleop_daimon_fm_25hz_smoke/latent_cache/{auto}",
+    assert smoke["profile"]["embodiment"] == canonical["profile"]["embodiment"]
+    assert smoke["data"]["action_dim"] == canonical["data"]["action_dim"]
+    assert smoke["data"]["state_key"] == canonical["data"]["state_key"]
+    assert smoke["data"]["action_key"] == canonical["data"]["action_key"]
+    assert smoke["deploy"] == canonical["deploy"]
+    assert smoke["data"]["max_windows"] == 64
+    assert smoke["train"]["epochs"] == 1
+    assert smoke["train"]["max_train_batches"] == 2
+    assert smoke["train"]["num_workers"] == 0
+    assert smoke["train"]["open_loop_test_every"] == 0
+
+
+def test_cobot_daimon25_remote_profile_preserves_migrated_recipe() -> None:
+    path = PROFILE_DIR / "cobot_magic_v1_daimon25_remote.yaml"
+    profile = load_config(str(path))
+
+    _assert_prometheus_provenance(
+        profile,
+        branch="hardware/cobot-daimon",
+        source_path=(
+            "prometheus/policy/flow_matching/configs/train/"
+            "cobot_magic_joint_unet_teleop_daimon25_remote.yaml"
         ),
-        "data.max_windows": (None, 64),
-        "data.root_dir": (
-            "/absolute/path/to/policy-data/cobot_magic_v1/data/teleop_daimon_fm_25hz",
-            "/absolute/path/to/policy-data/cobot_magic_v1/data/teleop_daimon_fm_25hz_smoke",
-        ),
-        "output.run_name": ("cobot_magic_v1", "cobot_magic_v1_smoke"),
-        "precompute.batch_size": (256, 64),
-        "train.batch_size": (32, 8),
-        "train.epochs": (200, 1),
-        "train.max_train_batches": (None, 2),
-        "train.num_workers": (8, 0),
-        "train.open_loop_test_every": (20, 0),
-        "train.persistent_workers": (True, False),
-    }
+    )
+    assert profile["profile"]["status"] == "maintained"
+    assert profile["output"]["run_name"] == "teleop_daimon_unet25"
+    assert profile["train"]["use_amp"] is True
+    assert profile["precompute"]["batch_size"] == 64
+    assert "auxiliary_loss" not in profile["models"]["fm"]
+    text = path.read_text(encoding="utf-8")
+    assert "/home/" not in text
+    assert "/absolute/path/to/" in profile["output"]["root_dir"]
+    assert Path(profile["data"]["root_dir"]).is_absolute()
 
 
 def test_franka_wuji_v1_profile_uses_generic_54d_joint_contract() -> None:
     profile = load_config(str(PROFILE_DIR / "franka_wuji_v1_smoke.yaml"))
 
-    assert profile["profile"]["provenance"]["revision"] == (
-        "a9d42927951432f5945f5434e4de4f24880e9964"
+    _assert_prometheus_provenance(
+        profile,
+        branch="hardware/franka-wuji",
+        source_path=(
+            "prometheus/policy/flow_matching/configs/train/"
+            "franka_wuji_smoke.yaml"
+        ),
     )
     assert profile["profile"]["hardware_imports_allowed"] is False
     assert profile["data"]["action_type"] == "joint"

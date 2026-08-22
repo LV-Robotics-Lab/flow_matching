@@ -14,8 +14,9 @@ dataset and robot-schema digests before running it.
 
 | Profile | Schema | Provenance |
 | --- | --- | --- |
-| `configs/train/embodiments/cobot_magic_v1.yaml` | 3 ordered RGB views, 8-frame window, 32-step 14D absolute joint action at 25 Hz | PrometheusV4 `hardware/cobot-daimon@b5e1552`, source SHA-256 embedded in config |
-| `configs/train/embodiments/cobot_magic_v1_smoke.yaml` | Bounded two-batch variant of `cobot_magic_v1` | Same Cobot revision, source SHA-256 embedded in config |
+| `configs/train/embodiments/cobot_magic_v1.yaml` | 3 ordered RGB views, 8-frame window, 32-step 14D absolute joint action at 25 Hz | PrometheusV4 source revision and SHA-256 embedded in config |
+| `configs/train/embodiments/cobot_magic_v1_smoke.yaml` | Bounded two-batch legacy smoke recipe without auxiliary losses | PrometheusV4 source revision and SHA-256 embedded in config |
+| `configs/train/embodiments/cobot_magic_v1_daimon25_remote.yaml` | Migrated 25 Hz AMP recipe for the `teleop_daimon_unet25` run; no auxiliary loss | PrometheusV4 source revision and SHA-256 embedded in config |
 | `configs/train/embodiments/cobot_magic_v1_joint30_legacy.yaml` | Legacy 30 Hz key layout retained for migration reference | Same Cobot revision; `status: legacy_reference` |
 | `configs/train/embodiments/franka_wuji_v1_smoke.yaml` | 3 ordered RGB views, 8-frame window, 16-step 54D absolute joint action at 30 Hz | PrometheusV4 `hardware/franka-wuji@a9d4292`, source SHA-256 embedded in config |
 
@@ -47,7 +48,7 @@ Resume paths must name an existing checkpoint.
 
 ## Cobot historical continuation
 
-The Cobot canonical and smoke profiles are fresh-run recipes. They must not be
+The Cobot canonical, Daimon 25 Hz remote, and smoke profiles are fresh-run recipes. They must not be
 used to full-resume the historical epoch-161 checkpoint because that run used
 FP32, optimizer learning rate `5.0e-5`, cosine scheduling,
 `open_loop_test_every: 10`, `plot_samples: 8`, and `resume_mode: full`.
